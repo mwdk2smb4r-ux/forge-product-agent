@@ -91,10 +91,19 @@ class ApprovalGate:
         self.input_fn = input_fn
         self.output_fn = output_fn
 
-    def approve(self, policy: ToolPolicy, arguments: dict[str, Any]) -> bool:
-        if policy.approval == "never":
+    def approve(
+        self,
+        policy: ToolPolicy,
+        arguments: dict[str, Any],
+        *,
+        force: bool = False,
+        reason: str = "",
+    ) -> bool:
+        if policy.approval == "never" and not force:
             return True
         self.output_fn("\nApproval required")
+        if reason:
+            self.output_fn(f"Reason: {reason}")
         self.output_fn(f"Action: {policy.purpose}")
         self.output_fn(f"Tool:   {policy.model_name}")
         self.output_fn("Arguments:")

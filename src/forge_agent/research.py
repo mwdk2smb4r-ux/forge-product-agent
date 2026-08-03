@@ -244,7 +244,7 @@ class SafeHTTPSClient:
         request_headers = {
             "Accept": "text/html,text/plain,text/markdown,application/json,application/xml;q=0.8",
             "Accept-Encoding": "identity",
-            "User-Agent": "forge-product-agent/0.2 (+https://github.com/mwdk2smb4r-ux/forge-product-agent)",
+            "User-Agent": "forge-product-agent/0.3 (+https://github.com/mwdk2smb4r-ux/forge-product-agent)",
         }
         if headers:
             request_headers.update(headers)

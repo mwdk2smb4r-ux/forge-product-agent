@@ -49,6 +49,10 @@ def _doctor(settings: Settings, provider: ProviderChain) -> int:
     print("Forge doctor")
     print(f"  config:       {settings.config_path}")
     print(f"  workspace:    {settings.workspace.root}")
+    print(
+        "  project code execution: "
+        + ("enabled (trusted projects only)" if settings.workspace.allow_project_code_execution else "blocked")
+    )
     print(f"  provider chain: {provider.description}")
     for position, configured in enumerate(provider.providers):
         label = "primary" if position == 0 else f"fallback {position}"
@@ -88,9 +92,7 @@ async def _run(args: argparse.Namespace) -> int:
     if args.doctor:
         return _doctor(settings, provider)
     if not provider.credential_present():
-        raise ProviderError(
-            f"Missing {settings.provider.api_key_env}. Set a replacement credential in your shell, or use --doctor."
-        )
+        raise ProviderError("No configured generation provider has its required credential. Use --doctor for details.")
     async with _maybe_mcp(settings, not args.no_tools) as mcp:
         gate = ApprovalGate()
         agent = ProductAgent(provider, mcp, gate, settings.max_tool_rounds)
@@ -132,7 +134,10 @@ async def _run(args: argparse.Namespace) -> int:
                     print("MCP tools are disabled.")
                 else:
                     for policy in mcp.policies:
-                        print(f"{policy.model_name}: approval={policy.approval} — {policy.purpose}")
+                        approval = policy.approval
+                        if policy.model_name == "workspace_read_file" and not provider.active_is_local:
+                            approval = "always while using a remote model"
+                        print(f"{policy.model_name}: approval={approval} — {policy.purpose}")
                 continue
             if text.startswith("/save"):
                 supplied = text.partition(" ")[2].strip()

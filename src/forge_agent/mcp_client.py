@@ -32,20 +32,23 @@ class WorkspaceMCP:
     async def __aenter__(self) -> "WorkspaceMCP":
         self.settings.root.mkdir(parents=True, exist_ok=True)
         bundled_python_path = str(Path(__file__).resolve().parents[1])
+        workspace_args = [
+            "-m",
+            "forge_agent.workspace_server",
+            "--root",
+            str(self.settings.root),
+            "--max-file-bytes",
+            str(self.settings.max_file_bytes),
+            "--timeout",
+            str(self.settings.command_timeout_seconds),
+            "--commands",
+            ",".join(self.settings.allowed_commands),
+        ]
+        if self.settings.allow_project_code_execution:
+            workspace_args.append("--allow-project-code-execution")
         workspace_parameters = StdioServerParameters(
             command=sys.executable,
-            args=[
-                "-m",
-                "forge_agent.workspace_server",
-                "--root",
-                str(self.settings.root),
-                "--max-file-bytes",
-                str(self.settings.max_file_bytes),
-                "--timeout",
-                str(self.settings.command_timeout_seconds),
-                "--commands",
-                ",".join(self.settings.allowed_commands),
-            ],
+            args=workspace_args,
             env={"PYTHONPATH": bundled_python_path},
             cwd=str(self.settings.root.parent),
         )

@@ -48,12 +48,14 @@ def main() -> None:
     parser.add_argument("--max-file-bytes", type=int, default=1_000_000)
     parser.add_argument("--timeout", type=int, default=90)
     parser.add_argument("--commands", default="python,py,git")
+    parser.add_argument("--allow-project-code-execution", action="store_true")
     args = parser.parse_args()
     workspace = Workspace(
         Path(args.root),
         max_file_bytes=args.max_file_bytes,
         timeout_seconds=args.timeout,
         allowed_commands=tuple(item.strip().lower() for item in args.commands.split(",") if item.strip()),
+        allow_project_code_execution=args.allow_project_code_execution,
     )
     build_server(workspace).run(transport="stdio")
 

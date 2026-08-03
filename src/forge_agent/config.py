@@ -25,6 +25,7 @@ class WorkspaceSettings:
     max_file_bytes: int
     command_timeout_seconds: int
     allowed_commands: tuple[str, ...]
+    allow_project_code_execution: bool = False
 
 
 @dataclass(frozen=True)
@@ -76,6 +77,18 @@ def _safe_base_url(value: str) -> str:
     raise ValueError("Provider base_url must use HTTPS (HTTP is allowed only for loopback)")
 
 
+def _credential_bound_base_url(value: str, api_key_env: str) -> str:
+    safe_url = _safe_base_url(value)
+    known_endpoints = {
+        "GROQ_API_KEY": "https://api.groq.com/openai/v1",
+        "HF_TOKEN": "https://router.huggingface.co/v1",
+    }
+    required = known_endpoints.get(api_key_env.upper())
+    if required and safe_url.lower() != required.lower():
+        raise ValueError(f"{api_key_env} may only be sent to {required}")
+    return safe_url
+
+
 def _safe_workspace(path: Path) -> Path:
     root = path.resolve()
     if root == Path(root.anchor) or root == Path.home().resolve():
@@ -117,10 +130,11 @@ def load_settings(path: str | Path = "forge.toml") -> Settings:
         provider_data = providers.get(name)
         if not isinstance(provider_data, dict):
             raise ValueError(f"Missing [providers.{name}] configuration")
+        api_key_env = str(provider_data.get("api_key_env", "")).strip()
         return ProviderSettings(
             name=name,
-            base_url=_safe_base_url(str(provider_data.get("base_url", ""))),
-            api_key_env=str(provider_data.get("api_key_env", "")),
+            base_url=_credential_bound_base_url(str(provider_data.get("base_url", "")), api_key_env),
+            api_key_env=api_key_env,
             model=str(provider_data.get("model", default_model)),
         )
 
@@ -159,6 +173,9 @@ def load_settings(path: str | Path = "forge.toml") -> Settings:
     research_enabled = research_data.get("enabled", True)
     if not isinstance(research_enabled, bool):
         raise ValueError("research.enabled must be true or false")
+    allow_project_code_execution = workspace_data.get("allow_project_code_execution", False)
+    if not isinstance(allow_project_code_execution, bool):
+        raise ValueError("workspace.allow_project_code_execution must be true or false")
 
     return Settings(
         config_path=config_path,
@@ -172,6 +189,7 @@ def load_settings(path: str | Path = "forge.toml") -> Settings:
                 workspace_data.get("command_timeout_seconds"), 90, 5, 600, "command_timeout_seconds"
             ),
             allowed_commands=commands,
+            allow_project_code_execution=allow_project_code_execution,
         ),
         research=ResearchSettings(
             enabled=research_enabled,

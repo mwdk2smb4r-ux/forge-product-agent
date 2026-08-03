@@ -6,7 +6,7 @@ The default configuration tries Groq first and automatically retries quota or ra
 
 Its tools use the Model Context Protocol (MCP). The workspace server is deliberately narrow: it can only operate inside one configured workspace, hides common secret files, refuses stale overwrites, never invokes a shell, limits command families, and asks you to approve every write or process execution.
 
-Forge v0.2 also includes a separate read-only research MCP server. It can fetch bounded text from public HTTPS pages, inspect public GitHub repositories, and optionally search through Perplexity. Every network request shows its exact arguments and requires approval. The research process receives no Groq or Hugging Face credential and has no workspace tools.
+Forge also includes a separate read-only research MCP server. It can fetch bounded text from public HTTPS pages, inspect public GitHub repositories, and optionally search through Perplexity. Every network request shows its exact arguments and requires approval. The research process receives no model-provider credential and has no workspace tools.
 
 ## Important: rotate the keys shared in chat
 
@@ -18,8 +18,10 @@ Forge requires Python 3.11 or newer.
 
 ```powershell
 py -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -e .
-$env:GROQ_API_KEY = Read-Host "Paste your NEW Groq API key"
+.\.venv\Scripts\python.exe -m pip install -r requirements-windows.lock
+.\.venv\Scripts\python.exe -m pip install -e . --no-deps
+$secret = Read-Host "Paste your NEW Groq API key" -AsSecureString
+$env:GROQ_API_KEY = [System.Net.NetworkCredential]::new("", $secret).Password
 .\.venv\Scripts\forge-agent.exe
 ```
 
@@ -46,15 +48,9 @@ To check configuration without sending data to a model:
 .\.venv\Scripts\forge-agent.exe --doctor
 ```
 
-## Hugging Face or a local OpenAI-compatible endpoint
+## Local OpenAI-compatible endpoints
 
-Change `provider` in `forge.toml` to `huggingface`, set a model supported by the Hugging Face router, and set a replacement token:
-
-```powershell
-$env:HF_TOKEN = Read-Host "Paste your NEW Hugging Face token"
-```
-
-For a local service such as Ollama, add a provider section and select it:
+For another local service such as Ollama, add a provider section and select it:
 
 ```toml
 [agent]
@@ -117,12 +113,19 @@ Research controls include HTTPS port 443 only, DNS resolution pinned to validate
 - Only the two bundled, reviewed stdio servers are loaded. There is no one-click installation of registry servers or remote MCP transport.
 - Both MCP subprocesses get intentionally small environments. Neither receives a model-provider API key; the research process may receive only `PERPLEXITY_API_KEY` when explicitly configured.
 - Only eight exact tool names reach the model. Server descriptions and descriptive schema annotations are discarded; the host supplies short, trusted descriptions.
-- All results are treated as untrusted data. Writes, commands, and every outbound research request require an exact, visible approval each time.
+- All results are treated as untrusted data. Writes, commands, and every outbound research request require an exact, visible approval each time. A remote model also needs approval before reading each workspace file.
 - Existing files can be changed only after reading them and supplying their current SHA-256 digest.
 - File access is rooted, symlink escapes are rejected, and common credential paths and key formats are denied.
-- Commands use an argument array with `shell=False`. Python is limited to selected check/test modules and Git to read-only subcommands.
+- Commands use an argument array with `shell=False`. Safe mode permits Python syntax compilation and read-only Git inspection, but blocks project tests, linters, build tools, and npm scripts.
 
-These controls reduce risk; they are not an operating-system sandbox. Running tests executes code from the workspace with your user permissions. Use a disposable VM or container for untrusted repositories. See [SECURITY.md](SECURITY.md) for the threat model.
+Safe mode is the default:
+
+```toml
+[workspace]
+allow_project_code_execution = false
+```
+
+For a project you have personally reviewed and trust, setting this to `true` enables the allowlisted test commands. This is not an operating-system sandbox: enabled tests execute with your user permissions. Use a disposable VM or container for untrusted repositories. See [SECURITY.md](SECURITY.md) for the threat model.
 
 ## Design choices
 

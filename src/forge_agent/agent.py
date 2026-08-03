@@ -67,10 +67,24 @@ class ProductAgent:
                     policy = self.mcp.policy_for_model_name(name) if self.mcp else None
                     if policy is None:
                         result = json.dumps({"is_error": True, "error": "tool is not allowlisted"})
-                    elif not self.approval_gate.approve(policy, arguments):
-                        result = json.dumps({"is_error": True, "error": "user denied this one action"})
                     else:
-                        result = await self.mcp.call(name, arguments)
+                        remote_workspace_read = (
+                            name == "workspace_read_file" and not self.provider.active_is_local
+                        )
+                        approved = self.approval_gate.approve(
+                            policy,
+                            arguments,
+                            force=remote_workspace_read,
+                            reason=(
+                                "A remote model is requesting workspace file contents."
+                                if remote_workspace_read
+                                else ""
+                            ),
+                        )
+                        if not approved:
+                            result = json.dumps({"is_error": True, "error": "user denied this one action"})
+                        else:
+                            result = await self.mcp.call(name, arguments)
                 self.messages.append({"role": "tool", "tool_call_id": call_id, "name": name, "content": result})
         raise AssertionError("unreachable tool loop state")
 

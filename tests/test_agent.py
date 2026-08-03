@@ -6,8 +6,9 @@ from forge_agent.policy import ApprovalGate, POLICY_BY_MODEL_NAME
 
 
 class FakeProvider:
-    def __init__(self, replies):
+    def __init__(self, replies, *, active_is_local=True):
         self.replies = iter(replies)
+        self.active_is_local = active_is_local
 
     async def complete(self, messages, tools):
         return next(self.replies)
@@ -89,6 +90,55 @@ class AgentTests(unittest.IsolatedAsyncioTestCase):
         response = await agent.run_turn("write it")
         self.assertIn("tool-round limit", response)
         self.assertEqual(len(mcp.calls), 1)
+
+    async def test_remote_model_needs_approval_to_read_workspace_content(self):
+        provider = FakeProvider(
+            [
+                {
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": "read-1",
+                            "function": {"name": "workspace_read_file", "arguments": '{"path":"PRODUCT.md"}'},
+                        }
+                    ],
+                },
+                {"content": "The file was not read."},
+            ],
+            active_is_local=False,
+        )
+        mcp = FakeMCP()
+        agent = ProductAgent(provider, mcp, ApprovalGate(lambda _: "no", lambda _: None), 2, lambda _: None)
+
+        response = await agent.run_turn("read the product brief")
+
+        self.assertEqual(response, "The file was not read.")
+        self.assertEqual(mcp.calls, [])
+
+    async def test_local_model_can_read_workspace_without_extra_approval(self):
+        provider = FakeProvider(
+            [
+                {
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": "read-1",
+                            "function": {"name": "workspace_read_file", "arguments": '{"path":"PRODUCT.md"}'},
+                        }
+                    ],
+                },
+                {"content": "Read locally."},
+            ],
+            active_is_local=True,
+        )
+        mcp = FakeMCP()
+        gate = ApprovalGate(lambda _: self.fail("local reads must not prompt"), lambda _: None)
+        agent = ProductAgent(provider, mcp, gate, 2, lambda _: None)
+
+        response = await agent.run_turn("read the product brief")
+
+        self.assertEqual(response, "Read locally.")
+        self.assertEqual(mcp.calls, [("workspace_read_file", {"path": "PRODUCT.md"})])
 
 
 if __name__ == "__main__":

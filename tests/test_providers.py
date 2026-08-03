@@ -6,16 +6,17 @@ from forge_agent.providers import OpenAICompatibleProvider, ProviderChain, Provi
 
 
 class FakeProvider:
-    def __init__(self, name, model, result=None, error=None):
+    def __init__(self, name, model, result=None, error=None, credential=True):
         self.name = name
         self.model = model
         self.result = result
         self.error = error
+        self.credential = credential
         self.calls = 0
         self.settings = SimpleNamespace(base_url=f"https://{name}.example/v1")
 
     def credential_present(self):
-        return True
+        return self.credential
 
     async def complete(self, messages, tools):
         self.calls += 1
@@ -46,6 +47,28 @@ class ProviderChainTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(ProviderError):
             await chain.complete([], [])
         self.assertEqual(local.calls, 0)
+
+    async def test_starts_on_local_when_primary_credential_is_missing(self):
+        primary = FakeProvider("groq", "large", credential=False)
+        local = FakeProvider("local", "forge-local", result={"content": "local answer"})
+        chain = ProviderChain([primary, local], lambda _: None)
+
+        self.assertTrue(chain.credential_present())
+        self.assertEqual(chain.active_name, "local")
+        result = await chain.complete([], [])
+
+        self.assertEqual(result["content"], "local answer")
+        self.assertEqual(primary.calls, 0)
+        self.assertEqual(local.calls, 1)
+
+    async def test_reports_no_credential_when_every_provider_requires_one(self):
+        primary = FakeProvider("groq", "large", credential=False)
+        fallback = FakeProvider("hosted", "small", credential=False)
+        chain = ProviderChain([primary, fallback], lambda _: None)
+
+        self.assertFalse(chain.credential_present())
+        with self.assertRaisesRegex(ProviderError, "No usable generation provider"):
+            await chain.complete([], [])
 
 
 class RuntimeIdentityTests(unittest.TestCase):

@@ -55,6 +55,11 @@ class OpenAICompatibleProvider:
             return "local LM Studio endpoint on the user's computer"
         return f"remote cloud endpoint operated by {self.settings.name}"
 
+    @property
+    def is_local(self) -> bool:
+        hostname = urllib.parse.urlparse(self.settings.base_url).hostname or ""
+        return hostname in {"localhost", "127.0.0.1", "::1"}
+
     def messages_with_runtime_identity(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         identity = (
             "RUNTIME IDENTITY (authoritative host-supplied facts):\n"
@@ -87,7 +92,7 @@ class OpenAICompatibleProvider:
             payload["tools"] = tools
             payload["tool_choice"] = "auto"
         body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-        headers = {"Content-Type": "application/json", "User-Agent": "forge-product-agent/0.1"}
+        headers = {"Content-Type": "application/json", "User-Agent": "forge-product-agent/0.3"}
         if credential:
             headers["Authorization"] = f"Bearer {credential}"
         request = urllib.request.Request(
@@ -120,7 +125,7 @@ class OpenAICompatibleProvider:
 
 
 class ProviderChain:
-    """Try providers in order, failing over only for quota/rate-limit responses."""
+    """Try providers in order, skipping unavailable credentials and quota limits."""
 
     FALLBACK_STATUS_CODES = {402, 429}
 
@@ -129,11 +134,14 @@ class ProviderChain:
             raise ValueError("ProviderChain requires at least one provider")
         self.providers = providers
         self.output_fn = output_fn
-        self.last_used = providers[0]
-        self._active_index = 0
+        self._active_index = next(
+            (index for index, provider in enumerate(providers) if provider.credential_present()),
+            0,
+        )
+        self.last_used = providers[self._active_index]
 
     def credential_present(self) -> bool:
-        return self.providers[0].credential_present()
+        return any(provider.credential_present() for provider in self.providers)
 
     @property
     def active_name(self) -> str:
@@ -148,6 +156,10 @@ class ProviderChain:
         return self.last_used.execution_location
 
     @property
+    def active_is_local(self) -> bool:
+        return self.last_used.is_local
+
+    @property
     def description(self) -> str:
         return " -> ".join(f"{provider.name}/{provider.model}" for provider in self.providers)
 
@@ -155,6 +167,9 @@ class ProviderChain:
         failures: list[str] = []
         for index in range(self._active_index, len(self.providers)):
             provider = self.providers[index]
+            if not provider.credential_present():
+                failures.append(f"{provider.name}: required credential is missing")
+                continue
             try:
                 result = await provider.complete(messages, tools)
                 self.last_used = provider
@@ -171,4 +186,4 @@ class ProviderChain:
                     f"\n{provider.name} returned HTTP {exc.status_code}; switching this request to "
                     f"{next_provider.name}/{next_provider.model}."
                 )
-        raise ProviderError("All providers failed: " + "; ".join(failures))
+        raise ProviderError("No usable generation provider: " + "; ".join(failures))

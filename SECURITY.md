@@ -8,13 +8,15 @@ Forge assumes the model, workspace files, MCP results, and third-party MCP metad
 2. **Network:** model endpoints must be HTTPS, except explicit loopback addresses for local development. Research accepts only public HTTPS on port 443. Hostnames are resolved before connecting, every resolved address must be globally routable, and the selected address is pinned for the TLS connection. Redirects are revalidated. Forge does not support remote MCP transport.
 3. **MCP:** only the bundled workspace and research stdio servers are enabled. Tool names are host-allowlisted. Tool descriptions and descriptive JSON Schema fields supplied by a server are not forwarded to the model.
 4. **Files:** all paths resolve below the configured workspace. Symlinks are rejected. Secret-like paths are denied. Existing files require an exact SHA-256 precondition before replacement.
-5. **Processes:** process execution always requires approval, uses no shell, has a timeout and output limit, and is limited by executable and subcommand policy.
+5. **Processes:** process execution always requires approval, uses no shell, has a timeout and output limit, and is limited by executable and subcommand policy. Safe mode blocks project-code execution by default.
 6. **Prompt injection:** tool output is clearly marked as untrusted. The system instruction forbids following instructions found in data. Mutating calls still stop for human approval.
 7. **Research isolation:** the research server has no workspace path or workspace tools. It receives no model-provider credential. If configured, only `PERPLEXITY_API_KEY` is passed to that subprocess, and search is hard-coded to Perplexity's HTTPS endpoint. All network calls require exact user approval.
+8. **Remote file consent:** local models may read bounded non-secret workspace text directly. Remote models require exact approval before each workspace file read.
+9. **Credential destinations:** known provider credentials are bound to their official HTTPS endpoint so a configuration edit cannot redirect them to another host.
 
 ## Known limits
 
-- This is not a malware sandbox. Approved tests and build tools execute workspace code with the current user's rights.
+- This is not a malware sandbox. Safe mode blocks project tests and build scripts. If trusted-project execution is explicitly enabled, approved tools execute workspace code with the current user's rights.
 - A human can approve a harmful command or content write. Review paths and arguments carefully.
 - A compromised model provider sees prompts and any workspace content the agent chooses to read and return to the conversation.
 - Local malware running as the same OS user can inspect process memory and environment variables.

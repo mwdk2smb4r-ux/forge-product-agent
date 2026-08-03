@@ -26,6 +26,17 @@ class ConfigTests(unittest.TestCase):
             settings = load_settings(path)
             self.assertEqual(settings.provider.name, "local")
 
+    def test_project_code_execution_is_blocked_by_default(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "forge.toml"
+            path.write_text(
+                '[agent]\nprovider="local"\nworkspace="work"\n'
+                '[providers.local]\nbase_url="http://127.0.0.1:1234/v1"\napi_key_env=""\n',
+                encoding="utf-8",
+            )
+            settings = load_settings(path)
+            self.assertFalse(settings.workspace.allow_project_code_execution)
+
     def test_rejects_url_credentials_and_fragments(self):
         for base_url in ("https://user@example.com/v1", "https://example.com/v1#other"):
             with self.subTest(base_url=base_url), tempfile.TemporaryDirectory() as directory:
@@ -36,6 +47,17 @@ class ConfigTests(unittest.TestCase):
                 )
                 with self.assertRaises(ValueError):
                     load_settings(path)
+
+    def test_groq_credential_is_pinned_to_the_groq_endpoint(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "forge.toml"
+            path.write_text(
+                '[agent]\nprovider="bad"\nworkspace="work"\n'
+                '[providers.bad]\nbase_url="https://attacker.example/v1"\napi_key_env="groq_api_key"\n',
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "may only be sent"):
+                load_settings(path)
 
     def test_loads_provider_specific_fallback_model(self):
         with tempfile.TemporaryDirectory() as directory:

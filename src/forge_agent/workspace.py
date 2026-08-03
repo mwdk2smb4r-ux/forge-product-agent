@@ -14,7 +14,21 @@ from typing import Any
 
 IGNORED_DIRS = {".git", ".venv", "node_modules", "__pycache__", ".forge_agent", ".pytest_cache", ".ruff_cache"}
 DENIED_PARTS = {".git", ".ssh", ".aws", ".azure", ".gnupg", ".forge_agent"}
-DENIED_NAMES = {".env", ".npmrc", ".pypirc", "id_rsa", "id_ed25519", "credentials", "secrets.toml"}
+DENIED_NAMES = {
+    ".env",
+    ".git-credentials",
+    ".netrc",
+    ".npmrc",
+    ".pypirc",
+    "auth.json",
+    "credentials",
+    "credentials.json",
+    "id_ed25519",
+    "id_rsa",
+    "secrets.toml",
+    "service-account.json",
+    "service_account.json",
+}
 DENIED_SUFFIXES = {".pem", ".key", ".p12", ".pfx", ".kdbx"}
 
 
@@ -23,11 +37,19 @@ class WorkspaceError(ValueError):
 
 
 class Workspace:
-    def __init__(self, root: Path, max_file_bytes: int, timeout_seconds: int, allowed_commands: tuple[str, ...]):
+    def __init__(
+        self,
+        root: Path,
+        max_file_bytes: int,
+        timeout_seconds: int,
+        allowed_commands: tuple[str, ...],
+        allow_project_code_execution: bool = False,
+    ):
         self.root = root.resolve()
         self.max_file_bytes = max_file_bytes
         self.timeout_seconds = timeout_seconds
         self.allowed_commands = set(allowed_commands)
+        self.allow_project_code_execution = allow_project_code_execution
         self.root.mkdir(parents=True, exist_ok=True)
 
     def _path(self, relative: str, *, allow_missing: bool = False) -> Path:
@@ -50,7 +72,7 @@ class Workspace:
         if lowered_parts & DENIED_PARTS:
             raise WorkspaceError("access to this path is denied")
         name = raw.name.lower()
-        if name in DENIED_NAMES or raw.suffix.lower() in DENIED_SUFFIXES:
+        if name in DENIED_NAMES or name.startswith(".env.") or raw.suffix.lower() in DENIED_SUFFIXES:
             raise WorkspaceError("secret-like files are denied")
         if candidate.exists() and candidate.is_symlink():
             raise WorkspaceError("symlinks are not allowed")
@@ -178,8 +200,14 @@ class Workspace:
         if name in {"python", "py"}:
             if args in (["--version"], ["-V"]):
                 return sys.executable if name == "python" else (shutil.which("py") or sys.executable), args
-            allowed_modules = {"unittest", "compileall", "pytest", "ruff"}
+            allowed_modules = {"compileall"}
+            if self.allow_project_code_execution:
+                allowed_modules.update({"unittest", "pytest", "ruff"})
             if len(args) < 2 or args[0] != "-m" or args[1] not in allowed_modules:
+                if not self.allow_project_code_execution:
+                    raise WorkspaceError(
+                        "project-code execution is disabled; Python is limited to --version and -m compileall"
+                    )
                 raise WorkspaceError(f"Python is limited to -m with {sorted(allowed_modules)}")
             resolved = sys.executable if name == "python" else (shutil.which("py") or sys.executable)
             return resolved, args
@@ -193,6 +221,8 @@ class Workspace:
         if name == "npm":
             if args == ["--version"]:
                 pass
+            elif not self.allow_project_code_execution:
+                raise WorkspaceError("project-code execution is disabled; npm scripts cannot run")
             elif args[:1] == ["test"]:
                 pass
             elif len(args) >= 2 and args[0] == "run" and args[1] in {"test", "lint", "check", "build"}:

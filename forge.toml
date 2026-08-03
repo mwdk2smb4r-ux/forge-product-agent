@@ -12,10 +12,6 @@ tool_output_limit = 30000
 base_url = "https://api.groq.com/openai/v1"
 api_key_env = "GROQ_API_KEY"
 
-[providers.huggingface]
-base_url = "https://router.huggingface.co/v1"
-api_key_env = "HF_TOKEN"
-
 [providers.local]
 base_url = "http://127.0.0.1:1234/v1"
 api_key_env = ""
@@ -25,6 +21,7 @@ model = "forge-local"
 max_file_bytes = 1000000
 command_timeout_seconds = 90
 allowed_commands = ["python", "py", "git"]
+allow_project_code_execution = false
 
 [research]
 enabled = true

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0 - 2026-08-03
+
+- Blocked execution of project Python tests, linters, and npm scripts by default; syntax compilation and read-only Git inspection remain available.
+- Added an explicit `workspace.allow_project_code_execution` trusted-project override.
+- Required per-file approval before a remote model can read workspace contents while keeping local-model reads local.
+- Bound known Groq and Hugging Face credential variables to their official HTTPS API endpoints.
+- Expanded secret-file blocking to cover environment variants and common credential stores.
+- Added weekly Dependabot checks and a Windows dependency lock snapshot.
+- Made a missing primary credential fall back safely to an available local provider.
+
 ## 0.2.0 - 2026-08-03
 
 - Added an isolated, read-only research MCP server.

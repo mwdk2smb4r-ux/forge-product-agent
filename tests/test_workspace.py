@@ -18,6 +18,9 @@ class WorkspaceTests(unittest.TestCase):
             (workspace.root / ".env").write_text("SECRET=x", encoding="utf-8")
             with self.assertRaises(WorkspaceError):
                 workspace.read_file(".env")
+            (workspace.root / ".env.production").write_text("SECRET=y", encoding="utf-8")
+            with self.assertRaises(WorkspaceError):
+                workspace.read_file(".env.production")
 
     def test_requires_hash_for_overwrite(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -42,6 +45,29 @@ class WorkspaceTests(unittest.TestCase):
                 asyncio.run(workspace.run_command("python", ["-c", "print('no')"]))
             result = asyncio.run(workspace.run_command("python", ["--version"]))
             self.assertEqual(result["exit_code"], 0)
+
+    def test_safe_mode_blocks_test_execution(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = self.make_workspace(Path(directory) / "work")
+            for module in ("unittest", "pytest", "ruff"):
+                with self.subTest(module=module), self.assertRaisesRegex(WorkspaceError, "execution is disabled"):
+                    workspace._validate_command("python", ["-m", module])
+            command, args = workspace._validate_command("python", ["-m", "compileall", "."])
+            self.assertTrue(command)
+            self.assertEqual(args[1], "compileall")
+
+    def test_trusted_mode_can_enable_test_execution(self):
+        with tempfile.TemporaryDirectory() as directory:
+            workspace = Workspace(
+                Path(directory) / "work",
+                max_file_bytes=10_000,
+                timeout_seconds=10,
+                allowed_commands=("python",),
+                allow_project_code_execution=True,
+            )
+            command, args = workspace._validate_command("python", ["-m", "unittest"])
+            self.assertTrue(command)
+            self.assertEqual(args[1], "unittest")
 
     def test_blocks_git_output_and_helper_options(self):
         with tempfile.TemporaryDirectory() as directory:
