@@ -40,6 +40,15 @@ class ResearchSettings:
 
 
 @dataclass(frozen=True)
+class TracingSettings:
+    enabled: bool
+    capture_content: bool
+    environment: str
+    sample_rate: float
+    allowed_hosts: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class Settings:
     config_path: Path
     provider: ProviderSettings
@@ -47,6 +56,7 @@ class Settings:
     model: str
     workspace: WorkspaceSettings
     research: ResearchSettings
+    tracing: TracingSettings
     max_output_tokens: int
     max_tool_rounds: int
     request_timeout_seconds: int
@@ -55,6 +65,13 @@ class Settings:
 
 def _bounded_int(value: object, default: int, low: int, high: int, name: str) -> int:
     number = default if value is None else int(value)
+    if not low <= number <= high:
+        raise ValueError(f"{name} must be between {low} and {high}")
+    return number
+
+
+def _bounded_float(value: object, default: float, low: float, high: float, name: str) -> float:
+    number = default if value is None else float(value)
     if not low <= number <= high:
         raise ValueError(f"{name} must be between {low} and {high}")
     return number
@@ -123,6 +140,7 @@ def load_settings(path: str | Path = "forge.toml") -> Settings:
     providers = data.get("providers", {})
     workspace_data = data.get("workspace", {})
     research_data = data.get("research", {})
+    tracing_data = data.get("tracing", {})
 
     default_model = str(agent.get("model", "openai/gpt-oss-120b"))
 
@@ -176,6 +194,24 @@ def load_settings(path: str | Path = "forge.toml") -> Settings:
     allow_project_code_execution = workspace_data.get("allow_project_code_execution", False)
     if not isinstance(allow_project_code_execution, bool):
         raise ValueError("workspace.allow_project_code_execution must be true or false")
+    tracing_enabled = tracing_data.get("enabled", False)
+    capture_content = tracing_data.get("capture_content", False)
+    if not isinstance(tracing_enabled, bool):
+        raise ValueError("tracing.enabled must be true or false")
+    if not isinstance(capture_content, bool):
+        raise ValueError("tracing.capture_content must be true or false")
+    tracing_environment = str(tracing_data.get("environment", "local")).strip()
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", tracing_environment):
+        raise ValueError("tracing.environment must be a short name containing letters, numbers, '.', '_' or '-'")
+    tracing_hosts_value = tracing_data.get(
+        "allowed_hosts",
+        ["cloud.langfuse.com", "us.cloud.langfuse.com", "jp.cloud.langfuse.com", "hipaa.cloud.langfuse.com"],
+    )
+    if not isinstance(tracing_hosts_value, list) or not tracing_hosts_value:
+        raise ValueError("tracing.allowed_hosts must be a non-empty array")
+    tracing_hosts = tuple(_safe_domain(item) for item in tracing_hosts_value)
+    if len(set(tracing_hosts)) != len(tracing_hosts):
+        raise ValueError("tracing.allowed_hosts cannot contain duplicates")
 
     return Settings(
         config_path=config_path,
@@ -203,6 +239,13 @@ def load_settings(path: str | Path = "forge.toml") -> Settings:
             allowed_domains=allowed_domains,
             search_provider=search_provider,
             search_api_key_env=search_api_key_env,
+        ),
+        tracing=TracingSettings(
+            enabled=tracing_enabled,
+            capture_content=capture_content,
+            environment=tracing_environment,
+            sample_rate=_bounded_float(tracing_data.get("sample_rate"), 1.0, 0.0, 1.0, "tracing.sample_rate"),
+            allowed_hosts=tracing_hosts,
         ),
         max_output_tokens=_bounded_int(agent.get("max_output_tokens"), 4096, 256, 65_536, "max_output_tokens"),
         max_tool_rounds=_bounded_int(agent.get("max_tool_rounds"), 8, 1, 20, "max_tool_rounds"),

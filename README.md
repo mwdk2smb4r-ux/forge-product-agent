@@ -25,6 +25,8 @@ $env:GROQ_API_KEY = [System.Net.NetworkCredential]::new("", $secret).Password
 .\.venv\Scripts\forge-agent.exe
 ```
 
+To include optional Langfuse tracing, install `requirements-windows-tracing.lock` instead of the base lock file.
+
 The default workspace is `product_workspace`. Forge creates it on first run.
 
 Useful commands in the chat:
@@ -108,10 +110,36 @@ allowed_domains = ["python.org", "github.com"]
 
 Research controls include HTTPS port 443 only, DNS resolution pinned to validated public addresses, private/local/reserved address rejection, redirect revalidation, response and timeout limits, an explicit content-type allowlist, no compression, no cookies, no JavaScript, and no browser or login state. HTML scripts, styles, templates, SVG, and other active content are removed before text reaches the model.
 
+## Optional privacy-first Langfuse tracing
+
+Langfuse tracing is disabled by default and does not affect normal Forge operation. When enabled, Forge records one trace per user turn, groups turns into a session, and adds child observations for model generations and tool decisions. The default `capture_content = false` records only provider/model identity, local-or-remote execution, timing, token counts when supplied by the model endpoint, tool names, approval outcomes, and error types. It does **not** send prompts, responses, file contents, tool arguments, or tool results.
+
+Install the pinned optional dependency snapshot:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-windows-tracing.lock
+.\.venv\Scripts\python.exe -m pip install -e . --no-deps
+```
+
+Set all three values only in the current PowerShell process. Use the base URL for the Langfuse region where the project was created:
+
+```powershell
+$publicKey = Read-Host "Langfuse public key"
+$secretKey = Read-Host "Langfuse secret key" -AsSecureString
+$env:LANGFUSE_PUBLIC_KEY = $publicKey
+$env:LANGFUSE_SECRET_KEY = [System.Net.NetworkCredential]::new("", $secretKey).Password
+$env:LANGFUSE_BASE_URL = "https://us.cloud.langfuse.com"
+```
+
+Then set `enabled = true` under `[tracing]` in `forge.toml` and run `forge-agent.exe --doctor`. Allowed cloud destinations are pinned in `tracing.allowed_hosts`; remote HTTP, URL credentials, query strings, fragments, and unlisted hosts are rejected. The Langfuse client uses a private OpenTelemetry provider, is never exposed as an MCP tool, and its credentials are never passed to either MCP subprocess. Forge flushes traces on exit and continues working if tracing cannot initialize or export.
+
+Setting `capture_content = true` is an explicit privacy tradeoff. A defense-in-depth masker redacts common credential fields and token formats, but it cannot guarantee removal of every sensitive value. Keep metadata-only mode for normal use.
+
 ## What “safe MCP” means here
 
 - Only the two bundled, reviewed stdio servers are loaded. There is no one-click installation of registry servers or remote MCP transport.
 - Both MCP subprocesses get intentionally small environments. Neither receives a model-provider API key; the research process may receive only `PERPLEXITY_API_KEY` when explicitly configured.
+- Langfuse is an optional host-side observer, not an MCP server. It receives metadata only by default and never receives Forge's model-provider keys.
 - Only eight exact tool names reach the model. Server descriptions and descriptive schema annotations are discarded; the host supplies short, trusted descriptions.
 - All results are treated as untrusted data. Writes, commands, and every outbound research request require an exact, visible approval each time. A remote model also needs approval before reading each workspace file.
 - Existing files can be changed only after reading them and supplying their current SHA-256 digest.

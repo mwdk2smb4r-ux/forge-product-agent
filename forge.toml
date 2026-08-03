@@ -31,3 +31,15 @@ max_redirects = 3
 allowed_domains = []
 search_provider = "perplexity"
 search_api_key_env = "PERPLEXITY_API_KEY"
+
+[tracing]
+enabled = false
+capture_content = false
+environment = "local"
+sample_rate = 1.0
+allowed_hosts = [
+  "cloud.langfuse.com",
+  "us.cloud.langfuse.com",
+  "jp.cloud.langfuse.com",
+  "hipaa.cloud.langfuse.com",
+]

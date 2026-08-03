@@ -92,7 +92,7 @@ class OpenAICompatibleProvider:
             payload["tools"] = tools
             payload["tool_choice"] = "auto"
         body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-        headers = {"Content-Type": "application/json", "User-Agent": "forge-product-agent/0.3"}
+        headers = {"Content-Type": "application/json", "User-Agent": "forge-product-agent/0.4"}
         if credential:
             headers["Authorization"] = f"Bearer {credential}"
         request = urllib.request.Request(
@@ -121,6 +121,9 @@ class OpenAICompatibleProvider:
             raise ProviderError(f"Provider returned an invalid response: {exc}") from None
         if not isinstance(message, dict):
             raise ProviderError("Provider response message was not an object")
+        usage = data.get("usage")
+        if isinstance(usage, dict):
+            message["_forge_usage"] = usage
         return message
 
 

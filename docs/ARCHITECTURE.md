@@ -6,6 +6,8 @@ terminal user
     v
 Forge CLI -- approval gate -- OpenAI-compatible model endpoint
     |
+    +-- optional metadata-only tracing --> allowlisted Langfuse HTTPS endpoint
+    |
     +-- official MCP 2.0 over local stdio --> bundled workspace server
     |                                      +-- rooted file operations
     |                                      +-- allowlisted, shell-free checks
@@ -23,3 +25,5 @@ The research server is intentionally separate from the workspace server. It has 
 The workflow prompt is intentionally process-oriented rather than framework-oriented. It asks for an approved product brief before implementation, favors small vertical slices and standard-library solutions, documents material decisions, and requires test or inspection evidence for completion.
 
 Session snapshots are optional and local. They are never loaded automatically, preventing stale or poisoned history from silently becoming trusted context.
+
+Tracing is a host-side adapter and is not part of either MCP process. A dedicated OpenTelemetry provider prevents unrelated application spans from being exported. Each user turn is a root `agent` observation; generation and tool observations are siblings beneath it, while a random session identifier groups turns until `/new`. Stable observation names keep dashboards usable. The adapter fails open for telemetry only—generation and safety controls continue to work—and flushes its bounded queue when Forge exits.

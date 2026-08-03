@@ -4,13 +4,18 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "forge-product-agent"
-version = "0.3.0"
+version = "0.4.0"
 description = "A human-approved MCP product-building agent for local workspaces."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 dependencies = [
   "mcp==2.0.0",
+]
+
+[project.optional-dependencies]
+tracing = [
+  "langfuse==4.14.1",
 ]
 
 [project.scripts]

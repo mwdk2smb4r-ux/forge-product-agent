@@ -1,4 +1,4 @@
-# Windows dependency snapshot for Forge 0.3.0.
+# Windows base dependency snapshot for Forge 0.4.0 (without optional tracing).
 # Install this file first, then install Forge with: python -m pip install -e . --no-deps
 annotated-types==0.8.0
 anyio==4.14.2

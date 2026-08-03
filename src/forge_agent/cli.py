@@ -15,6 +15,7 @@ from .config import Settings, load_settings
 from .mcp_client import WorkspaceMCP
 from .policy import ApprovalGate
 from .providers import OpenAICompatibleProvider, ProviderChain, ProviderError
+from .tracing import ForgeTracing, tracing_readiness
 
 
 HELP = """Commands:
@@ -74,6 +75,15 @@ def _doctor(settings: Settings, provider: ProviderChain) -> int:
         print(f"    direct URL: available")
         print(f"    public GitHub: available")
         print(f"    web search: {search_status}")
+    tracing_status = tracing_readiness(settings.tracing)
+    print(f"  Langfuse:     {tracing_status.detail}")
+    if settings.tracing.enabled:
+        try:
+            langfuse_version = importlib.metadata.version("langfuse")
+        except importlib.metadata.PackageNotFoundError:
+            langfuse_version = "not installed (install the tracing extra)"
+        print(f"    SDK:        {langfuse_version}")
+        print(f"    content:    {'captured' if settings.tracing.capture_content else 'redacted (metadata-only)'}")
     return 0 if provider.credential_present() and sdk_version == "2.0.0" else 1
 
 
@@ -86,6 +96,15 @@ async def _maybe_mcp(settings: Settings, enabled: bool) -> AsyncIterator[Workspa
         yield mcp
 
 
+@asynccontextmanager
+async def _maybe_tracing(settings: Settings) -> AsyncIterator[ForgeTracing]:
+    tracing = ForgeTracing.from_settings(settings.tracing)
+    try:
+        yield tracing
+    finally:
+        tracing.flush()
+
+
 async def _run(args: argparse.Namespace) -> int:
     settings = load_settings(args.config)
     provider = _provider(settings)
@@ -93,9 +112,9 @@ async def _run(args: argparse.Namespace) -> int:
         return _doctor(settings, provider)
     if not provider.credential_present():
         raise ProviderError("No configured generation provider has its required credential. Use --doctor for details.")
-    async with _maybe_mcp(settings, not args.no_tools) as mcp:
+    async with _maybe_tracing(settings) as tracing, _maybe_mcp(settings, not args.no_tools) as mcp:
         gate = ApprovalGate()
-        agent = ProductAgent(provider, mcp, gate, settings.max_tool_rounds)
+        agent = ProductAgent(provider, mcp, gate, settings.max_tool_rounds, tracing=tracing)
         if args.message:
             response = await agent.run_turn(args.message)
             print(response)
@@ -105,6 +124,7 @@ async def _run(args: argparse.Namespace) -> int:
         print(f"Provider chain: {provider.description}")
         print(f"Workspace: {settings.workspace.root}")
         print("MCP: bundled local workspace and research servers" if mcp else "MCP: disabled")
+        print(f"Tracing: {tracing.detail}")
         print("Type /help for commands. Start by describing your idea.\n")
         while True:
             try:
@@ -127,6 +147,7 @@ async def _run(args: argparse.Namespace) -> int:
                 print(f"Research tools: {'enabled' if settings.research.enabled else 'disabled'}")
                 if settings.research.enabled:
                     print(f"Search provider: {settings.research.search_provider}")
+                print(f"Tracing: {tracing.detail}")
                 print(f"Conversation messages: {len(agent.messages) - 1}")
                 continue
             if text == "/tools":

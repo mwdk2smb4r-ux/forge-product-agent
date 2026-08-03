@@ -110,6 +110,36 @@ class ConfigTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Invalid research domain"):
                 load_settings(path)
 
+    def test_tracing_is_metadata_only_and_disabled_by_default(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "forge.toml"
+            path.write_text(
+                '[agent]\nprovider="local"\nworkspace="work"\n'
+                '[providers.local]\nbase_url="http://127.0.0.1:1234/v1"\napi_key_env=""\n',
+                encoding="utf-8",
+            )
+            settings = load_settings(path)
+            self.assertFalse(settings.tracing.enabled)
+            self.assertFalse(settings.tracing.capture_content)
+
+    def test_rejects_invalid_tracing_privacy_and_host_settings(self):
+        cases = (
+            ('enabled="yes"', "enabled"),
+            ('allowed_hosts=["safe.example,evil.example"]', "Invalid research domain"),
+            ('sample_rate=1.5', "sample_rate"),
+        )
+        for tracing_line, expected in cases:
+            with self.subTest(tracing_line=tracing_line), tempfile.TemporaryDirectory() as directory:
+                path = Path(directory) / "forge.toml"
+                path.write_text(
+                    '[agent]\nprovider="local"\nworkspace="work"\n'
+                    '[providers.local]\nbase_url="http://127.0.0.1:1234/v1"\napi_key_env=""\n'
+                    f'[tracing]\n{tracing_line}\n',
+                    encoding="utf-8",
+                )
+                with self.assertRaisesRegex(ValueError, expected):
+                    load_settings(path)
+
 
 if __name__ == "__main__":
     unittest.main()

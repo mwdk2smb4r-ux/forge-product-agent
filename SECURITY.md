@@ -13,6 +13,7 @@ Forge assumes the model, workspace files, MCP results, and third-party MCP metad
 7. **Research isolation:** the research server has no workspace path or workspace tools. It receives no model-provider credential. If configured, only `PERPLEXITY_API_KEY` is passed to that subprocess, and search is hard-coded to Perplexity's HTTPS endpoint. All network calls require exact user approval.
 8. **Remote file consent:** local models may read bounded non-secret workspace text directly. Remote models require exact approval before each workspace file read.
 9. **Credential destinations:** known provider credentials are bound to their official HTTPS endpoint so a configuration edit cannot redirect them to another host.
+10. **Tracing:** Langfuse is off by default. Enabling it requires three dedicated environment values, including an explicit base URL whose host is configuration-allowlisted. Its client uses an isolated OpenTelemetry provider and is never passed to MCP. Metadata-only mode excludes prompt/response text, file content, tool arguments, and tool results. Telemetry failures do not authorize actions or interrupt Forge.
 
 ## Known limits
 
@@ -24,6 +25,7 @@ Forge assumes the model, workspace files, MCP results, and third-party MCP metad
 - Public research reveals the approved URL, hostname, GitHub repository coordinates, or search query to the relevant remote service. Do not approve queries containing secrets, private source, personal data, or unpublished product details.
 - DNS and TLS pinning, content limits, and HTML stripping reduce network risk but do not make hostile content trustworthy. Research can still contain false claims or prompt injection.
 - Public GitHub API access is unauthenticated and subject to GitHub's public rate limits.
+- Metadata can still be sensitive: model names, tool names, timing, token counts, approval outcomes, and session relationships leave the computer when Langfuse tracing is enabled. Content capture is riskier and masking cannot guarantee that all private data is removed.
 
 Use a container or VM, a dedicated low-privilege account, short-lived narrowly scoped tokens, and version-controlled backups for higher-risk work.
 

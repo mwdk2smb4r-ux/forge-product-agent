@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0 - 2026-08-03
+
+- Added optional Langfuse 4.14.1 tracing with one trace per turn, session grouping, generation/tool observations, model identity, token usage, approvals, and safe error types.
+- Made tracing opt-in and metadata-only by default; prompts, responses, file contents, tool arguments, and results are excluded unless content capture is explicitly enabled.
+- Pinned the Langfuse destination to an HTTPS allowlist, isolated its OpenTelemetry provider, kept its credentials out of MCP subprocesses, and made telemetry failures non-fatal.
+- Added secure PowerShell setup guidance, a Windows lock snapshot for the tracing extra, doctor/status visibility, shutdown flushing, and tracing security tests.
+
 ## 0.3.0 - 2026-08-03
 
 - Blocked execution of project Python tests, linters, and npm scripts by default; syntax compilation and read-only Git inspection remain available.

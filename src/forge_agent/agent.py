@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from pathlib import Path
 from typing import Any, Callable
 
@@ -8,6 +9,7 @@ from .mcp_client import WorkspaceMCP
 from .policy import ApprovalGate
 from .prompts import SYSTEM_PROMPT
 from .providers import ProviderChain
+from .tracing import ForgeTracing
 
 
 class ProductAgent:
@@ -18,19 +20,30 @@ class ProductAgent:
         approval_gate: ApprovalGate,
         max_tool_rounds: int,
         output_fn: Callable[[str], None] = print,
+        tracing: ForgeTracing | None = None,
     ):
         self.provider = provider
         self.mcp = mcp
         self.approval_gate = approval_gate
         self.max_tool_rounds = max_tool_rounds
         self.output_fn = output_fn
+        self.tracing = tracing or ForgeTracing.disabled()
+        self.session_id = uuid.uuid4().hex
         self.messages: list[dict[str, Any]] = [{"role": "system", "content": SYSTEM_PROMPT}]
 
     async def run_turn(self, user_text: str) -> str:
         self.messages.append({"role": "user", "content": user_text})
         tools = self.mcp.model_tools if self.mcp else []
+        with self.tracing.turn(self.session_id, user_text) as turn_trace:
+            response = await self._run_tool_loop(tools, turn_trace)
+            turn_trace.finish(response)
+            return response
+
+    async def _run_tool_loop(self, tools: list[dict[str, Any]], turn_trace: Any) -> str:
         for tool_round in range(self.max_tool_rounds + 1):
-            message = await self.provider.complete(self.messages, tools)
+            with turn_trace.generation(self.messages, len(tools)) as generation:
+                message = await self.provider.complete(self.messages, tools)
+                generation.generation_result(message, self.provider)
             assistant_message: dict[str, Any] = {"role": "assistant", "content": message.get("content")}
             tool_calls = message.get("tool_calls") or []
             if tool_calls:
@@ -57,39 +70,47 @@ class ProductAgent:
                 call_id = str(call.get("id", "missing-call-id"))
                 function = call.get("function") or {}
                 name = str(function.get("name", ""))
+                approved: bool | None = None
+                invalid_result: str | None = None
                 try:
                     arguments = json.loads(function.get("arguments") or "{}")
                     if not isinstance(arguments, dict):
                         raise ValueError("arguments must be an object")
                 except (json.JSONDecodeError, ValueError) as exc:
-                    result = json.dumps({"is_error": True, "error": f"invalid tool arguments: {exc}"})
-                else:
-                    policy = self.mcp.policy_for_model_name(name) if self.mcp else None
-                    if policy is None:
-                        result = json.dumps({"is_error": True, "error": "tool is not allowlisted"})
+                    arguments = {}
+                    invalid_result = json.dumps({"is_error": True, "error": f"invalid tool arguments: {exc}"})
+                with turn_trace.tool(name, arguments) as tool_trace:
+                    if invalid_result is not None:
+                        result = invalid_result
                     else:
-                        remote_workspace_read = (
-                            name == "workspace_read_file" and not self.provider.active_is_local
-                        )
-                        approved = self.approval_gate.approve(
-                            policy,
-                            arguments,
-                            force=remote_workspace_read,
-                            reason=(
-                                "A remote model is requesting workspace file contents."
-                                if remote_workspace_read
-                                else ""
-                            ),
-                        )
-                        if not approved:
-                            result = json.dumps({"is_error": True, "error": "user denied this one action"})
+                        policy = self.mcp.policy_for_model_name(name) if self.mcp else None
+                        if policy is None:
+                            result = json.dumps({"is_error": True, "error": "tool is not allowlisted"})
                         else:
-                            result = await self.mcp.call(name, arguments)
+                            remote_workspace_read = (
+                                name == "workspace_read_file" and not self.provider.active_is_local
+                            )
+                            approved = self.approval_gate.approve(
+                                policy,
+                                arguments,
+                                force=remote_workspace_read,
+                                reason=(
+                                    "A remote model is requesting workspace file contents."
+                                    if remote_workspace_read
+                                    else ""
+                                ),
+                            )
+                            if not approved:
+                                result = json.dumps({"is_error": True, "error": "user denied this one action"})
+                            else:
+                                result = await self.mcp.call(name, arguments)
+                    tool_trace.tool_result(result, approved=approved, is_error=_tool_result_is_error(result))
                 self.messages.append({"role": "tool", "tool_call_id": call_id, "name": name, "content": result})
         raise AssertionError("unreachable tool loop state")
 
     def reset(self) -> None:
         self.messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        self.session_id = uuid.uuid4().hex
 
     def save(self, directory: Path, name: str) -> Path:
         safe_name = "".join(character for character in name if character.isalnum() or character in "-_")[:60]
@@ -103,3 +124,11 @@ class ProductAgent:
             suffix += 1
         path.write_text(json.dumps({"version": 1, "messages": self.messages[1:]}, indent=2, ensure_ascii=False), encoding="utf-8")
         return path
+
+
+def _tool_result_is_error(result: str) -> bool:
+    try:
+        payload = json.loads(result)
+    except (json.JSONDecodeError, TypeError):
+        return False
+    return isinstance(payload, dict) and bool(payload.get("is_error"))

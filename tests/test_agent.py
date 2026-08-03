@@ -140,6 +140,13 @@ class AgentTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response, "Read locally.")
         self.assertEqual(mcp.calls, [("workspace_read_file", {"path": "PRODUCT.md"})])
 
+    async def test_new_conversation_gets_a_new_tracing_session(self):
+        provider = FakeProvider([{"content": "hello"}])
+        agent = ProductAgent(provider, None, ApprovalGate(lambda _: "no", lambda _: None), 1)
+        previous = agent.session_id
+        agent.reset()
+        self.assertNotEqual(agent.session_id, previous)
+
 
 if __name__ == "__main__":
     unittest.main()
