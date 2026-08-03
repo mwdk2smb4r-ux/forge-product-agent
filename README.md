@@ -4,13 +4,17 @@ Forge is a local, interactive Python agent that helps turn an idea into a mainta
 
 The default configuration tries Groq first and automatically retries quota or rate-limit failures (HTTP 402/429) against the local LM Studio model identified as `forge-local`. The fallback remains active for the rest of that Forge process; restart Forge to try Groq again. Other provider errors remain visible so authentication and configuration mistakes are not hidden.
 
-Its workspace tools use the Model Context Protocol (MCP). The included MCP server is deliberately narrow: it can only operate inside one configured workspace, hides common secret files, refuses stale overwrites, never invokes a shell, limits command families, truncates large outputs, and asks you to approve every write or process execution.
+Its tools use the Model Context Protocol (MCP). The workspace server is deliberately narrow: it can only operate inside one configured workspace, hides common secret files, refuses stale overwrites, never invokes a shell, limits command families, and asks you to approve every write or process execution.
+
+Forge v0.2 also includes a separate read-only research MCP server. It can fetch bounded text from public HTTPS pages, inspect public GitHub repositories, and optionally search through Perplexity. Every network request shows its exact arguments and requires approval. The research process receives no Groq or Hugging Face credential and has no workspace tools.
 
 ## Important: rotate the keys shared in chat
 
 API keys pasted into a chat should be treated as exposed. Revoke the Groq and Hugging Face credentials previously shared, create replacements, and use only the replacements below. This repository contains no real key and does not load `.env` files.
 
 ## Install on Windows
+
+Forge requires Python 3.11 or newer.
 
 ```powershell
 py -m venv .venv
@@ -81,12 +85,39 @@ Interactive responses are labeled with the provider and API model identifier tha
 
 Only loopback HTTP is allowed. Non-local providers must use HTTPS.
 
+## Safe public research
+
+Direct URL and public GitHub research work without another API key. Ask Forge to research a public URL or repository; before any request leaves the computer, Forge displays the exact tool arguments and requires you to type `yes`.
+
+Optional general web search uses Perplexity's Search API. It is disabled at call time until you provide a dedicated key:
+
+```powershell
+$secret = Read-Host "Enter your Perplexity API key" -AsSecureString
+$env:PERPLEXITY_API_KEY = [System.Net.NetworkCredential]::new("", $secret).Password
+```
+
+The token is passed only to the isolated research subprocess and only to `https://api.perplexity.ai/search`. Perplexity search is a paid external service; direct URL and public GitHub research remain available without it. To remove search from the tool entirely, use:
+
+```toml
+[research]
+search_provider = "none"
+```
+
+To restrict direct page fetching to selected sites, configure an allowlist. Subdomains are included:
+
+```toml
+[research]
+allowed_domains = ["python.org", "github.com"]
+```
+
+Research controls include HTTPS port 443 only, DNS resolution pinned to validated public addresses, private/local/reserved address rejection, redirect revalidation, response and timeout limits, an explicit content-type allowlist, no compression, no cookies, no JavaScript, and no browser or login state. HTML scripts, styles, templates, SVG, and other active content are removed before text reaches the model.
+
 ## What “safe MCP” means here
 
-- Only the bundled, reviewed stdio server is loaded. There is no one-click installation of registry servers.
-- The MCP subprocess gets an intentionally small environment and receives no model-provider API key.
-- Only five exact tool names reach the model. Their server descriptions and schema annotations are discarded; the host supplies short, trusted descriptions.
-- Read results are treated as untrusted data. Writes and commands require an exact, visible approval each time.
+- Only the two bundled, reviewed stdio servers are loaded. There is no one-click installation of registry servers or remote MCP transport.
+- Both MCP subprocesses get intentionally small environments. Neither receives a model-provider API key; the research process may receive only `PERPLEXITY_API_KEY` when explicitly configured.
+- Only eight exact tool names reach the model. Server descriptions and descriptive schema annotations are discarded; the host supplies short, trusted descriptions.
+- All results are treated as untrusted data. Writes, commands, and every outbound research request require an exact, visible approval each time.
 - Existing files can be changed only after reading them and supplying their current SHA-256 digest.
 - File access is rooted, symlink escapes are rejected, and common credential paths and key formats are denied.
 - Commands use an argument array with `shell=False`. Python is limited to selected check/test modules and Git to read-only subcommands.
@@ -95,7 +126,7 @@ These controls reduce risk; they are not an operating-system sandbox. Running te
 
 ## Design choices
 
-Forge borrows the productive parts of the Superpowers workflow—Socratic brainstorming, explicit design approval, small plans, test-first implementation, review, and evidence before completion—without installing its full plugin framework. It uses the official MCP Python SDK instead of maintaining a private protocol implementation. Groq and Hugging Face are called through their OpenAI-compatible APIs with Python's standard library, avoiding separate provider SDKs.
+Forge borrows the productive parts of the Superpowers workflow—Socratic brainstorming, explicit design approval, small plans, test-first implementation, review, and evidence before completion—without installing its full plugin framework. It uses the official MCP Python SDK instead of maintaining a private protocol implementation. Model providers and public research endpoints are called with Python's standard library, avoiding separate provider, search, HTML, and GitHub SDK dependencies.
 
 ## Develop and test
 
@@ -105,3 +136,5 @@ Forge borrows the productive parts of the Superpowers workflow—Socratic brains
 ```
 
 Architecture, research, and extension guidance live in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/RESEARCH.md](docs/RESEARCH.md), and [docs/ADDING_MCP.md](docs/ADDING_MCP.md).
+
+Release history is recorded in [CHANGELOG.md](CHANGELOG.md).

@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import ipaddress
+import re
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
+
+
+DOMAIN_NAME = re.compile(r"[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?\Z")
 
 
 @dataclass(frozen=True)
@@ -24,12 +28,24 @@ class WorkspaceSettings:
 
 
 @dataclass(frozen=True)
+class ResearchSettings:
+    enabled: bool
+    request_timeout_seconds: int
+    max_response_bytes: int
+    max_redirects: int
+    allowed_domains: tuple[str, ...]
+    search_provider: str
+    search_api_key_env: str
+
+
+@dataclass(frozen=True)
 class Settings:
     config_path: Path
     provider: ProviderSettings
     fallback_providers: tuple[ProviderSettings, ...]
     model: str
     workspace: WorkspaceSettings
+    research: ResearchSettings
     max_output_tokens: int
     max_tool_rounds: int
     request_timeout_seconds: int
@@ -67,6 +83,24 @@ def _safe_workspace(path: Path) -> Path:
     return root
 
 
+def _safe_domain(value: object) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"Invalid research domain: {value}")
+    domain = str(value).strip().lower().rstrip(".")
+    if not domain or len(domain) > 253 or ":" in domain or "/" in domain or "*" in domain:
+        raise ValueError(f"Invalid research domain: {value}")
+    try:
+        ascii_domain = domain.encode("idna").decode("ascii")
+    except UnicodeError:
+        raise ValueError(f"Invalid research domain: {value}") from None
+    if not DOMAIN_NAME.fullmatch(ascii_domain) or any(
+        not label or len(label) > 63 or label.startswith("-") or label.endswith("-")
+        for label in ascii_domain.split(".")
+    ):
+        raise ValueError(f"Invalid research domain: {value}")
+    return ascii_domain
+
+
 def load_settings(path: str | Path = "forge.toml") -> Settings:
     config_path = Path(path).resolve()
     if not config_path.is_file():
@@ -75,6 +109,7 @@ def load_settings(path: str | Path = "forge.toml") -> Settings:
     agent = data.get("agent", {})
     providers = data.get("providers", {})
     workspace_data = data.get("workspace", {})
+    research_data = data.get("research", {})
 
     default_model = str(agent.get("model", "openai/gpt-oss-120b"))
 
@@ -107,6 +142,24 @@ def load_settings(path: str | Path = "forge.toml") -> Settings:
     if not commands or any(command not in valid_commands for command in commands):
         raise ValueError(f"allowed_commands must be a non-empty subset of {sorted(valid_commands)}")
 
+    allowed_domains_value = research_data.get("allowed_domains", [])
+    if not isinstance(allowed_domains_value, list):
+        raise ValueError("research.allowed_domains must be an array")
+    allowed_domains = tuple(_safe_domain(item) for item in allowed_domains_value)
+    if len(set(allowed_domains)) != len(allowed_domains):
+        raise ValueError("research.allowed_domains cannot contain duplicates")
+    search_provider = str(research_data.get("search_provider", "perplexity")).strip().lower()
+    if search_provider not in {"none", "perplexity"}:
+        raise ValueError("research.search_provider must be 'none' or 'perplexity'")
+    search_api_key_env = str(research_data.get("search_api_key_env", "PERPLEXITY_API_KEY")).strip()
+    if search_provider == "perplexity" and search_api_key_env != "PERPLEXITY_API_KEY":
+        raise ValueError("Perplexity search must use the dedicated PERPLEXITY_API_KEY variable")
+    if search_provider == "none":
+        search_api_key_env = ""
+    research_enabled = research_data.get("enabled", True)
+    if not isinstance(research_enabled, bool):
+        raise ValueError("research.enabled must be true or false")
+
     return Settings(
         config_path=config_path,
         provider=provider,
@@ -119,6 +172,19 @@ def load_settings(path: str | Path = "forge.toml") -> Settings:
                 workspace_data.get("command_timeout_seconds"), 90, 5, 600, "command_timeout_seconds"
             ),
             allowed_commands=commands,
+        ),
+        research=ResearchSettings(
+            enabled=research_enabled,
+            request_timeout_seconds=_bounded_int(
+                research_data.get("request_timeout_seconds"), 20, 5, 60, "research.request_timeout_seconds"
+            ),
+            max_response_bytes=_bounded_int(
+                research_data.get("max_response_bytes"), 500_000, 10_000, 2_000_000, "research.max_response_bytes"
+            ),
+            max_redirects=_bounded_int(research_data.get("max_redirects"), 3, 0, 5, "research.max_redirects"),
+            allowed_domains=allowed_domains,
+            search_provider=search_provider,
+            search_api_key_env=search_api_key_env,
         ),
         max_output_tokens=_bounded_int(agent.get("max_output_tokens"), 4096, 256, 65_536, "max_output_tokens"),
         max_tool_rounds=_bounded_int(agent.get("max_tool_rounds"), 8, 1, 20, "max_tool_rounds"),

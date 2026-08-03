@@ -25,3 +25,12 @@ model = "forge-local"
 max_file_bytes = 1000000
 command_timeout_seconds = 90
 allowed_commands = ["python", "py", "git"]
+
+[research]
+enabled = true
+request_timeout_seconds = 20
+max_response_bytes = 500000
+max_redirects = 3
+allowed_domains = []
+search_provider = "perplexity"
+search_api_key_env = "PERPLEXITY_API_KEY"

@@ -49,6 +49,30 @@ class AgentTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response, "I did not write the file.")
         self.assertEqual(mcp.calls, [])
 
+    async def test_denied_research_query_never_leaves_the_host(self):
+        provider = FakeProvider(
+            [
+                {
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": "research-1",
+                            "function": {
+                                "name": "research_search_web",
+                                "arguments": '{"query":"private product notes"}',
+                            },
+                        }
+                    ],
+                },
+                {"content": "The query was not sent."},
+            ]
+        )
+        mcp = FakeMCP()
+        agent = ProductAgent(provider, mcp, ApprovalGate(lambda _: "no", lambda _: None), 2, lambda _: None)
+        response = await agent.run_turn("research this")
+        self.assertEqual(response, "The query was not sent.")
+        self.assertEqual(mcp.calls, [])
+
     async def test_tool_round_limit_does_not_execute_extra_call(self):
         tool_message = {
             "content": None,

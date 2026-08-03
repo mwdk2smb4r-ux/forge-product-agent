@@ -11,6 +11,7 @@ class ToolPolicy:
     mcp_name: str
     purpose: str
     approval: str
+    server: str = "workspace"
 
 
 POLICIES: tuple[ToolPolicy, ...] = (
@@ -19,10 +20,31 @@ POLICIES: tuple[ToolPolicy, ...] = (
     ToolPolicy("workspace_write_file", "write_file", "Create or atomically replace one workspace text file.", "always"),
     ToolPolicy("workspace_replace_text", "replace_text", "Replace one exact text occurrence in a workspace file.", "always"),
     ToolPolicy("workspace_run_check", "run_command", "Run one allowlisted test or inspection command without a shell.", "always"),
+    ToolPolicy(
+        "research_fetch_url",
+        "fetch_url",
+        "Send one approved public HTTPS URL to the isolated research server and return bounded text.",
+        "always",
+        "research",
+    ),
+    ToolPolicy(
+        "research_search_web",
+        "search_web",
+        "Send one approved query to the configured search provider and return bounded source results.",
+        "always",
+        "research",
+    ),
+    ToolPolicy(
+        "research_github",
+        "github_read",
+        "Read approved public GitHub repository metadata, releases, directories, or UTF-8 files.",
+        "always",
+        "research",
+    ),
 )
 
 POLICY_BY_MODEL_NAME = {policy.model_name: policy for policy in POLICIES}
-POLICY_BY_MCP_NAME = {policy.mcp_name: policy for policy in POLICIES}
+POLICY_BY_SERVER_AND_MCP_NAME = {(policy.server, policy.mcp_name): policy for policy in POLICIES}
 
 
 def sanitize_schema(value: Any, depth: int = 0) -> dict[str, Any]:

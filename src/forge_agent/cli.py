@@ -13,7 +13,7 @@ from typing import AsyncIterator
 from .agent import ProductAgent
 from .config import Settings, load_settings
 from .mcp_client import WorkspaceMCP
-from .policy import ApprovalGate, POLICIES
+from .policy import ApprovalGate
 from .providers import OpenAICompatibleProvider, ProviderChain, ProviderError
 
 
@@ -57,6 +57,19 @@ def _doctor(settings: Settings, provider: ProviderChain) -> int:
         print(f"    credential: {'present' if configured.credential_present() else 'missing'}")
     print(f"  MCP SDK:      {sdk_version}")
     print(f"  MCP transport: local stdio only")
+    print(f"  research:     {'enabled' if settings.research.enabled else 'disabled'}")
+    if settings.research.enabled:
+        if settings.research.search_provider == "none":
+            search_status = "disabled"
+        else:
+            search_status = (
+                f"{settings.research.search_provider} (ready)"
+                if os.environ.get(settings.research.search_api_key_env)
+                else f"{settings.research.search_provider} (optional key missing)"
+            )
+        print(f"    direct URL: available")
+        print(f"    public GitHub: available")
+        print(f"    web search: {search_status}")
     return 0 if provider.credential_present() and sdk_version == "2.0.0" else 1
 
 
@@ -65,7 +78,7 @@ async def _maybe_mcp(settings: Settings, enabled: bool) -> AsyncIterator[Workspa
     if not enabled:
         yield None
         return
-    async with WorkspaceMCP(settings.workspace, settings.tool_output_limit) as mcp:
+    async with WorkspaceMCP(settings.workspace, settings.tool_output_limit, settings.research) as mcp:
         yield mcp
 
 
@@ -89,7 +102,7 @@ async def _run(args: argparse.Namespace) -> int:
         print("Forge Product Agent")
         print(f"Provider chain: {provider.description}")
         print(f"Workspace: {settings.workspace.root}")
-        print("MCP: bundled local workspace server" if mcp else "MCP: disabled")
+        print("MCP: bundled local workspace and research servers" if mcp else "MCP: disabled")
         print("Type /help for commands. Start by describing your idea.\n")
         while True:
             try:
@@ -109,13 +122,16 @@ async def _run(args: argparse.Namespace) -> int:
                 print(f"Last provider used: {provider.active_name} / {provider.active_model}")
                 print(f"Execution location: {provider.active_location}")
                 print(f"Workspace: {settings.workspace.root}")
+                print(f"Research tools: {'enabled' if settings.research.enabled else 'disabled'}")
+                if settings.research.enabled:
+                    print(f"Search provider: {settings.research.search_provider}")
                 print(f"Conversation messages: {len(agent.messages) - 1}")
                 continue
             if text == "/tools":
                 if not mcp:
                     print("MCP tools are disabled.")
                 else:
-                    for policy in POLICIES:
+                    for policy in mcp.policies:
                         print(f"{policy.model_name}: approval={policy.approval} — {policy.purpose}")
                 continue
             if text.startswith("/save"):
@@ -145,7 +161,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Brainstorm and build maintainable products with human-approved MCP tools.")
     parser.add_argument("--config", default="forge.toml", help="Path to the TOML configuration file")
     parser.add_argument("--message", help="Run one prompt and exit")
-    parser.add_argument("--no-tools", action="store_true", help="Disable the workspace MCP server")
+    parser.add_argument("--no-tools", action="store_true", help="Disable all bundled MCP tools")
     parser.add_argument("--doctor", action="store_true", help="Validate local configuration without making network requests")
     args = parser.parse_args()
     try:

@@ -1,6 +1,6 @@
 # Adding another MCP server safely
 
-Forge intentionally does not accept arbitrary MCP startup commands from configuration. A local MCP command is code execution with the same privileges as Forge, and registry popularity is not a security review.
+Forge intentionally does not accept arbitrary MCP startup commands from configuration. A local MCP command is code execution with the same privileges as Forge, and registry popularity is not a security review. The workspace and research capabilities are separate bundled processes because their privileges should not mix.
 
 Before extending `WorkspaceMCP`:
 

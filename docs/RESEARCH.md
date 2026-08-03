@@ -10,10 +10,13 @@ The supplied [Multiverse AI Toolkit](https://start.me/p/RMPGL5/multiverse-ai-too
 - [Superpowers](https://github.com/obra/superpowers): informed the brainstorm → approved design → small plan → test-first slices → review → verification workflow.
 - [Groq local tool calling](https://console.groq.com/docs/tool-use/local-tool-calling): informed the bounded model/tool loop and OpenAI-compatible message format.
 - [OWASP prompt-injection prevention](https://cheatsheetseries.owasp.org/cheatsheets/LLM_Prompt_Injection_Prevention_Cheat_Sheet.html): informed the assumption that retrieved content and tool output are untrusted.
+- [MCP reference servers](https://github.com/modelcontextprotocol/servers): Fetch, Git, and Memory were useful design references. The repository explicitly labels them educational rather than production-ready, so Forge implements a smaller purpose-built research server.
+- [SlowMist MCP Security Checklist](https://github.com/slowmist/MCP-Security-Checklist): informed network/workspace process separation, dedicated credentials, strict validation, resource limits, visible approval, and untrusted-result handling.
+- [Perplexity Search API](https://docs.perplexity.ai/api-reference/search-post): used as an optional bounded raw-search provider. It is not required for direct URL or public GitHub research.
 
 ## Considered but not imported
 
-- [fast-agent](https://github.com/evalstate/fast-agent) is capable and supports Groq, Hugging Face, MCP, skills, and agent deployment. Forge's first version needs one interactive agent, one local MCP server, and a visible approval gate. A small host keeps that gate auditable and avoids bringing in a general multi-agent runtime before it adds product value.
+- [fast-agent](https://github.com/evalstate/fast-agent) is capable and supports Groq, Hugging Face, MCP, skills, and agent deployment. Forge currently needs one interactive agent, two narrowly separated local MCP servers, and a visible approval gate. A small host keeps that gate auditable and avoids bringing in a general multi-agent runtime before it adds product value.
 - Superpowers itself is a plugin/skills framework for existing coding harnesses. Forge incorporates the relevant lifecycle in its system instruction instead of coupling this standalone CLI to a particular harness.
 - Public MCP registries are useful discovery sources, not trust authorities. Forge intentionally has no registry installer or arbitrary MCP command configuration.
 
