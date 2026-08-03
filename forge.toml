@@ -1,0 +1,27 @@
+[agent]
+provider = "groq"
+model = "openai/gpt-oss-120b"
+fallback_providers = ["local"]
+workspace = "product_workspace"
+max_output_tokens = 4096
+max_tool_rounds = 8
+request_timeout_seconds = 120
+tool_output_limit = 30000
+
+[providers.groq]
+base_url = "https://api.groq.com/openai/v1"
+api_key_env = "GROQ_API_KEY"
+
+[providers.huggingface]
+base_url = "https://router.huggingface.co/v1"
+api_key_env = "HF_TOKEN"
+
+[providers.local]
+base_url = "http://127.0.0.1:1234/v1"
+api_key_env = ""
+model = "forge-local"
+
+[workspace]
+max_file_bytes = 1000000
+command_timeout_seconds = 90
+allowed_commands = ["python", "py", "git"]

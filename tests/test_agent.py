@@ -1,0 +1,71 @@
+import json
+import unittest
+
+from forge_agent.agent import ProductAgent
+from forge_agent.policy import ApprovalGate, POLICY_BY_MODEL_NAME
+
+
+class FakeProvider:
+    def __init__(self, replies):
+        self.replies = iter(replies)
+
+    async def complete(self, messages, tools):
+        return next(self.replies)
+
+
+class FakeMCP:
+    model_tools = [{"type": "function", "function": {"name": "workspace_write_file"}}]
+
+    def __init__(self):
+        self.calls = []
+
+    def policy_for_model_name(self, name):
+        return POLICY_BY_MODEL_NAME.get(name)
+
+    async def call(self, name, arguments):
+        self.calls.append((name, arguments))
+        return json.dumps({"ok": True})
+
+
+class AgentTests(unittest.IsolatedAsyncioTestCase):
+    async def test_denied_tool_never_reaches_mcp(self):
+        provider = FakeProvider(
+            [
+                {
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": "1",
+                            "function": {"name": "workspace_write_file", "arguments": '{"path":"x","content":"y"}'},
+                        }
+                    ],
+                },
+                {"content": "I did not write the file."},
+            ]
+        )
+        mcp = FakeMCP()
+        agent = ProductAgent(provider, mcp, ApprovalGate(lambda _: "no", lambda _: None), 2, lambda _: None)
+        response = await agent.run_turn("write it")
+        self.assertEqual(response, "I did not write the file.")
+        self.assertEqual(mcp.calls, [])
+
+    async def test_tool_round_limit_does_not_execute_extra_call(self):
+        tool_message = {
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": "1",
+                    "function": {"name": "workspace_write_file", "arguments": '{"path":"x","content":"y"}'},
+                }
+            ],
+        }
+        provider = FakeProvider([tool_message, tool_message])
+        mcp = FakeMCP()
+        agent = ProductAgent(provider, mcp, ApprovalGate(lambda _: "yes", lambda _: None), 1, lambda _: None)
+        response = await agent.run_turn("write it")
+        self.assertIn("tool-round limit", response)
+        self.assertEqual(len(mcp.calls), 1)
+
+
+if __name__ == "__main__":
+    unittest.main()
