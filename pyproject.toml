@@ -15,7 +15,7 @@ dependencies = [
 
 [project.optional-dependencies]
 tracing = [
-  "langfuse==4.14.1",
+  "langfuse==4.14.4",
 ]
 
 [project.scripts]
